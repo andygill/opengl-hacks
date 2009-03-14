@@ -188,7 +188,7 @@ drawTheScene v = do
             vertex (Vertex2 wh (wh :: Float))
             texCoord (TexCoord2 1 (0 :: Float))
             vertex (Vertex2 wh (-wh :: Float))
-
+{0
   setFontFaceSize font 7 10
 
   sequence [ do
@@ -199,6 +199,7 @@ drawTheScene v = do
 	scale 1.01 1  (0:: Float)
 	| n <- [1..40]
 	]
+-}
 {-
   sequence_ [ do
     renderPrimitive Points $ do
