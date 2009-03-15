@@ -1,5 +1,18 @@
 #include <OpenGL/gl.h>
 
+void myhack1() {
+//  GLuint fbo;
+//  glGenFramebuffersEXT(1, &fbo);
+//  glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fbo);
+
+//  GLuint depthbuffer;
+//  glGenRenderbuffersEXT(1, &depthbuffer);
+//  glBindRenderbufferEXT(GL_RENDERBUFFER_EXT, depthbuffer);
+
+
+} 
+
+
 GLubyte image[16][16][4] =
 	{ { { 255, 255, 255, 0 },  { 255, 0, 0, 0 }, 
 	    { 255, 0, 0, 0 }, 
