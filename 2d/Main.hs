@@ -23,7 +23,17 @@ import Data.Word
 
 import qualified Graphics.Chalkboard as CB
 
-import Graphics.Rendering.FTGL
+import Graphics.Rendering.FTGL as FTGL
+
+data SceneState = SceneState
+	{ frame :: Int
+	, theTm :: UTCTime
+	, texName :: TextureObject
+	, font :: FTGL.Font
+	, pos :: Position
+	}
+
+
 
 main :: IO ()
 main = do
@@ -57,8 +67,7 @@ main = do
 	
      setFontFaceSize font 72 72
 
-     v <- newIORef (0 :: Int,tm,texName,font)
-
+     v <- newIORef $ SceneState 0 tm texName font (Position 0 0)
 
      displayCallback $= (drawTheScene v)
 
@@ -66,13 +75,14 @@ main = do
 
      reshapeCallback $= Just resizeScene
 
-     let anim = addTimerCallback 10 $ do
+     let anim = addTimerCallback 50 $ do
 			postRedisplay Nothing
 			anim
      anim
 
---     keyboardMouseCallback $= Just (keyPressed sceneState)
+     keyboardMouseCallback $= Just (keyPressed v)
 
+     passiveMotionCallback $= Just (mouseMoved v)
      mainLoop
 
 initGL :: IO ()
@@ -91,6 +101,7 @@ initGL = do
 
  -- polygonSmooth $= Enabled
  -- hint PolygonSmooth $=Nicest
+
 {-
 const XSize = 640, YSize = 480
 glMatrixMode (GL_PROJECTION)
@@ -111,6 +122,11 @@ glTranslatef(0.375, 0.375, 0)
 --  shadeModel $= Smooth -- enables smooth color shading
 --  polygonMode $= (Line,Line)
 --  polygonMode $= (Fill,Line)
+
+{- hacks -}
+
+  myhack1
+
   Size width height <- get windowSize
   resizeScene (Size width height)
 
@@ -135,20 +151,111 @@ resizeScene s@(Size width height) = do
 --  postRedisplay Nothing
   -- request redraw??
 
+keyPressed :: IORef SceneState -> KeyboardMouseCallback
+-- 27 is ESCAPE
+keyPressed v (Char '\27') Down _ _ = exitWith ExitSuccess
+keyPressed v _            _    _ _ = return ()
+
+mouseMoved :: IORef SceneState -> MotionCallback
+mouseMoved v p@(Position x y)       = do -- print (x,y)
+					 s <- readIORef v
+				         writeIORef v (s { pos = p })
+					 return ()
+	
+
+
 drawTheScene v = do
-  Size width height <- get windowSize
-  let sz = 3
-  (n,tm,texName,font) <- readIORef v
+  scene@(SceneState n tm texName font (Position x y)) <- readIORef v
   tm' <- getCurrentTime
   if (n `mod` 100 == 0) then do
       putStrLn $ show ((1 / (diffUTCTime tm' tm)) * 100) ++ " fps (" ++ show n ++ ")"
-      writeIORef v (succ n,tm',texName,font)
-    else  writeIORef v (succ n,tm,texName,font)
+      writeIORef v (scene { frame = succ n, theTm = tm' })
+    else writeIORef v (scene { frame = succ n })
+
+{-
+  drawBuffer $= NoBuffers
+  drawBuffer $= AuxBuffer 0
+  drawTheScene' v
+  drawBuffer $= NoBuffers
+  drawBuffer $= BackBuffers
+  drawTheScene' v
+-}
+{-
+  p <- mallocBytes (128 * 128 * 3)	-- choice
+  sequence_ [ case arr ! (w,h) of
+	       (Color3 r g b) -> do pokeElemOff p (off+0) r
+				    pokeElemOff p (off+1) g
+				    pokeElemOff p (off+2) b
+	    | (off,(w,h)) <- zip [0,3 ..] [ (w,h) | h <- [ 0 .. height - 1 ], w <- [ 0 .. width - 1 ], True]
+	    ]
+
+--  print $ last $  zip [0,3 ..] [ (w,h) | h <- [ 0 .. height - 1 ], w <- [ 0 .. width - 1 ]]
+--  print $	(width * height * 3)	-- choice
+  textureBinding Texture2D $= Just texName
+  textureFilter  Texture2D $= ((Nearest, Nothing), Nearest)
+
+  textureWrapMode Texture2D S $= (Repeated, Repeat)
+  textureWrapMode Texture2D T $= (Repeated, Repeat)
+
+  textureBinding $= 
+
+  drawTheScene' v
+-}
+{-
+  sequence [ do
+  	drawBuffer $= NoBuffers
+  	drawBuffer $= AuxBuffer 0
+  	drawTheScene' v
+	| n <- [1..10]]
+
+  drawBuffer $= NoBuffers
+  drawBuffer $= BackBuffers
+-}
+
+{-
+  drawBuffer $= AuxBuffer 0
+  t <- get drawBuffer
+  print t
+-}
+  drawTheScene' v
+
+{-
+copyTexImage2D :: Maybe CubeMapTarget -> Level -> PixelInternalFormat -> Position -> TextureSize2D -> Border -> IO ()
+copyTexImage2D mbCubeMap level int (Position x y) (TextureSize2D w h) border =
+   glCopyTexImage2D
+      (maybe (marshalTextureTarget Texture2D) marshalCubeMapTarget mbCubeMap) level
+      (marshalPixelInternalFormat' int) x y w h border
+-}
+--   texImage2D Nothing NoProxy 0 RGB' (TextureSize2D 16 16) 0 pd
+
+
+  textureBinding Texture2D $= Just texName
+  textureFilter Texture2D $= ((	Linear',Nothing),Linear')
+  copyTexImage2D Nothing 0 RGB' (Position x y) (TextureSize2D 256 256) 0
+{-
+  copyTexImage2D Nothing 0 RGB' (Position x y) (TextureSize2D 256 256) 0
+  copyTexImage2D Nothing 0 RGB' (Position x y) (TextureSize2D 256 256) 0
+  copyTexImage2D Nothing 0 RGB' (Position x y) (TextureSize2D 256 256) 0
+  copyTexImage2D Nothing 0 RGB' (Position x y) (TextureSize2D 256 256) 0
+  copyTexImage2D Nothing 0 RGB' (Position x y) (TextureSize2D 256 256) 0
+-}
+  swapBuffers
+
+drawTheScene' v = do
+  scene@(SceneState n tm texName font _) <- readIORef v
+
+
+  Size width height <- get windowSize
+  let sz = 3
 
   loadIdentity
   rotate ((fromIntegral n / 20)::Float) (Vector3 0 0 1)
 
-  clearColor $= Color4 0.3 0.3 0.3 0 -- Clear the background color to black
+  let f v = fromIntegral (if odd d then v-r else r) / fromIntegral v
+   	      where r = n `mod` v
+	            d = n `div` v
+
+  clearColor $= Color4 (f 251) (f 241) (f 233) 0 -- Clear the background color to black
   clear [ColorBuffer] -- clear the scree
 
   pointSize $= realToFrac sz 
@@ -168,13 +275,22 @@ drawTheScene v = do
 			fmap (\ (CB.RGB r g b) -> Color3 (toW8 r) (toW8 g) (toW8 b)) $ (exampleBoard n) -- (fromIntegral n / 20))
 
 
-  to <- buildTexture texName arr
 {-
                          [ ((x,y),Color3 (fromIntegral (x * 3 + if odd x then 50 else 0)) (fromIntegral (y * 4)) (fromIntegral n))
                           | x <- [0..63]
                           , y <- [0..63]
                           ]
 -}
+    
+  to <- if n `mod` 200000 == 0 then buildTexture texName arr else return undefined
+
+  textureBinding Texture2D $= Just texName
+  textureFilter  Texture2D $= ((Nearest, Nothing), Nearest)
+
+  textureWrapMode Texture2D S $= (Repeated, Repeat)
+  textureWrapMode Texture2D T $= (Repeated, Repeat)
+
+
 
   let wh = fromIntegral (max width height) / 1.5
 
@@ -188,7 +304,7 @@ drawTheScene v = do
             vertex (Vertex2 wh (wh :: Float))
             texCoord (TexCoord2 1 (0 :: Float))
             vertex (Vertex2 wh (-wh :: Float))
-{0
+{-
   setFontFaceSize font 7 10
 
   sequence [ do
@@ -209,10 +325,7 @@ drawTheScene v = do
     , y <- take (600 `div` sz) [0,1..599]
     ] 
 -}
-
-  return ()
-
-  swapBuffers
+--  flush
 
 --glClearColor(.3, .3, .3, 0)
 --glClear(GL_COLOR_BUFFER_BIT)
@@ -270,3 +383,4 @@ instance CB.Average c => CB.Average (Color3 c) where
         blues  = [ b | Color3 _ _ b <- cs ]
 
 foreign import ccall "&" image :: Ptr Word8
+foreign import ccall "myhack1" myhack1 :: IO ()
